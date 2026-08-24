@@ -418,16 +418,30 @@ bool convertFile(const std::string& inputFile, const std::string& outputFile,
                         return false;
                     }
                     ofs.write(reinterpret_cast<const char*>(outputData.data()), outputData.size());
+                    ofs.flush();
+                    ofs.close();
                 } else {
                     Json outputJson;
                     try { outputJson = spine43::writeJsonData(skelData); }
                     catch (const std::exception& e) { throw std::runtime_error("writeJsonData failed: " + std::string(e.what())); }
-                    std::ofstream ofs(outputFile);
-                    if (!ofs) {
+                    
+                    std::string jsonStr;
+                    try { jsonStr = dumpJson(outputJson); }
+                    catch (const std::exception& e) { throw std::runtime_error("dumpJson failed: " + std::string(e.what())); }
+                    
+                    std::cout << "Writing to absolute path: " << std::filesystem::absolute(outputFile).string() << " (json len=" << jsonStr.length() << ")\n";
+                    std::ofstream ofs(outputFile, std::ios::binary);
+                    if (!ofs.is_open()) {
                         std::cerr << "Error: Cannot create output file: " << outputFile << "\n";
                         return false;
                     }
-                    ofs << dumpJson(outputJson);
+                    ofs.write(jsonStr.data(), jsonStr.size());
+                    ofs.flush();
+                    ofs.close();
+                    if (ofs.fail()) {
+                        std::cerr << "Error: ofs.fail() returned true when writing " << outputFile << "\n";
+                        return false;
+                    }
                 }
                 break;
             }
@@ -531,6 +545,7 @@ ConversionOptions parseArguments(int argc, char* argv[]) {
 }
 
 int main(int argc, char* argv[]) {
+    { std::ofstream f("cpp_hello.txt"); f << "cpp hello"; f.close(); }
     ConversionOptions options = parseArguments(argc, argv);
     
     if (options.help) {

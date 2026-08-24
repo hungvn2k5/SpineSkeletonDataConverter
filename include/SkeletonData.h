@@ -322,6 +322,8 @@ struct MeshAttachment {
     OptColor color = std::nullopt;
     OptSequence sequence = std::nullopt; 
     int hullLength = 0; 
+    int timelines = 1;
+    std::vector<int> timelineSlots;
     std::vector<float> uvs; 
     std::vector<unsigned short> triangles; 
     std::vector<unsigned short> edges; 
@@ -334,6 +336,7 @@ struct LinkedmeshAttachment {
     OptSequence sequence = std::nullopt; 
     std::string parentMesh; 
     int timelines = 1; 
+    int sourceIndex = -1;
     int skinIndex = -1; // temporary field used for binary format reading
     OptStr skin = std::nullopt; 
 }; 
@@ -537,6 +540,7 @@ struct Skin {
     std::vector<std::string> transform;
     std::vector<std::string> path;
     std::vector<std::string> physics;
+    std::vector<std::string> constraints;
     OptColor color = std::nullopt;
 }; 
 
@@ -581,7 +585,8 @@ struct SkeletonData {
     std::vector<TransformConstraintData> transformConstraints; 
     std::vector<PathConstraintData> pathConstraints; 
     std::vector<PhysicsConstraintData> physicsConstraints; 
-    std::vector<SliderConstraintData> sliderConstraints; 
+    std::vector<SliderConstraintData> sliderConstraints;
+    std::vector<std::string> constraintNames; 
     std::vector<Skin> skins; 
     std::vector<EventData> events; 
     std::vector<Animation> animations; 

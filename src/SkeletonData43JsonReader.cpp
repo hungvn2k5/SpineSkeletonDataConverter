@@ -63,7 +63,8 @@ SkeletonData readJsonData(const Json& j) {
             boneData.scaleY = boneJson.value("scaleY", 1.0f);
             boneData.shearX = boneJson.value("shearX", 0.0f);
             boneData.shearY = boneJson.value("shearY", 0.0f);
-            boneData.inherit = inheritMap.at(boneJson.value("inherit", "normal"));
+            std::string inheritStr = boneJson.contains("transform") ? boneJson["transform"].get<std::string>() : boneJson.value("inherit", "normal");
+            if (inheritMap.find(inheritStr) != inheritMap.end()) boneData.inherit = inheritMap.at(inheritStr);
             boneData.skinRequired = boneJson.value("skin", false);
             if (boneJson.contains("color")) boneData.color = stringToColor(boneJson["color"], true);
             boneData.icon = boneJson.value("icon", "");
@@ -87,7 +88,97 @@ SkeletonData readJsonData(const Json& j) {
         }
     }
 
-    /* IK constraints */
+    /* Unified Constraints array (Spine 4.3 JSON format) */
+    if (j.contains("constraints")) {
+        for (const auto& cJson : j["constraints"]) {
+            std::string ctype = cJson.value("type", "");
+            if (ctype == "ik") {
+                IKConstraintData ikData;
+                if (cJson.contains("name")) ikData.name = cJson["name"];
+                ikData.order = cJson.value("order", 0);
+                ikData.skinRequired = cJson.value("skin", false);
+                if (cJson.contains("bones")) ikData.bones = cJson["bones"].get<std::vector<std::string>>();
+                if (cJson.contains("target")) ikData.target = cJson["target"];
+                ikData.mix = cJson.value("mix", 1.0f);
+                ikData.softness = cJson.value("softness", 0.0f);
+                ikData.bendPositive = cJson.value("bendPositive", true);
+                ikData.compress = cJson.value("compress", false);
+                ikData.stretch = cJson.value("stretch", false);
+                ikData.uniform = cJson.value("uniform", false);
+                skeletonData.ikConstraints.push_back(ikData);
+            } else if (ctype == "transform") {
+                TransformConstraintData transformData;
+                if (cJson.contains("name")) transformData.name = cJson["name"];
+                transformData.order = cJson.value("order", 0);
+                transformData.skinRequired = cJson.value("skin", false);
+                if (cJson.contains("bones")) transformData.bones = cJson["bones"].get<std::vector<std::string>>();
+                if (cJson.contains("target")) transformData.target = cJson["target"];
+                else if (cJson.contains("source")) transformData.target = cJson["source"];
+                transformData.mixRotate = cJson.value("mixRotate", 1.0f);
+                transformData.mixX = cJson.value("mixX", 1.0f);
+                transformData.mixY = cJson.value("mixY", transformData.mixX);
+                transformData.mixScaleX = cJson.value("mixScaleX", 1.0f);
+                transformData.mixScaleY = cJson.value("mixScaleY", transformData.mixScaleX);
+                transformData.mixShearY = cJson.value("mixShearY", 1.0f);
+                transformData.offsetRotation = cJson.value("rotation", 0.0f);
+                transformData.offsetX = cJson.value("x", 0.0f);
+                transformData.offsetY = cJson.value("y", 0.0f);
+                transformData.offsetScaleX = cJson.value("scaleX", 0.0f);
+                transformData.offsetScaleY = cJson.value("scaleY", 0.0f);
+                transformData.offsetShearY = cJson.value("shearY", 0.0f);
+                transformData.relative = cJson.value("relative", false);
+                transformData.local = cJson.value("local", false);
+                skeletonData.transformConstraints.push_back(transformData);
+            } else if (ctype == "path") {
+                PathConstraintData pathData;
+                if (cJson.contains("name")) pathData.name = cJson["name"];
+                pathData.order = cJson.value("order", 0);
+                pathData.skinRequired = cJson.value("skin", false);
+                if (cJson.contains("bones")) pathData.bones = cJson["bones"].get<std::vector<std::string>>();
+                if (cJson.contains("target")) pathData.target = cJson["target"];
+                pathData.positionMode = positionModeMap.at(cJson.value("positionMode", "percent"));
+                pathData.spacingMode = spacingModeMap.at(cJson.value("spacingMode", "length"));
+                pathData.rotateMode = rotateModeMap.at(cJson.value("rotateMode", "tangent"));
+                pathData.offsetRotation = cJson.value("rotation", 0.0f);
+                pathData.position = cJson.value("position", 0.0f);
+                pathData.spacing = cJson.value("spacing", 0.0f);
+                pathData.mixRotate = cJson.value("mixRotate", 1.0f);
+                pathData.mixX = cJson.value("mixX", 1.0f);
+                pathData.mixY = cJson.value("mixY", pathData.mixX);
+                skeletonData.pathConstraints.push_back(pathData);
+            } else if (ctype == "physics") {
+                PhysicsConstraintData physicsData;
+                if (cJson.contains("name")) physicsData.name = cJson["name"];
+                physicsData.order = cJson.value("order", 0);
+                physicsData.skinRequired = cJson.value("skin", false);
+                if (cJson.contains("bone")) physicsData.bone = cJson["bone"];
+                physicsData.x = cJson.value("x", 0.0f);
+                physicsData.y = cJson.value("y", 0.0f);
+                physicsData.rotate = cJson.value("rotate", 0.0f);
+                physicsData.scaleX = cJson.value("scaleX", 0.0f);
+                physicsData.shearX = cJson.value("shearX", 0.0f);
+                physicsData.limit = cJson.value("limit", 5000.0f);
+                physicsData.fps = cJson.value("fps", 60.0f);
+                physicsData.inertia = cJson.value("inertia", 1.0f);
+                physicsData.strength = cJson.value("strength", 100.0f);
+                physicsData.damping = cJson.value("damping", 1.0f);
+                physicsData.mass = cJson.value("mass", 1.0f);
+                physicsData.wind = cJson.value("wind", 0.0f);
+                physicsData.gravity = cJson.value("gravity", 0.0f);
+                physicsData.mix = cJson.value("mix", 1.0f);
+                physicsData.inertiaGlobal = cJson.value("inertiaGlobal", false);
+                physicsData.strengthGlobal = cJson.value("strengthGlobal", false);
+                physicsData.dampingGlobal = cJson.value("dampingGlobal", false);
+                physicsData.massGlobal = cJson.value("massGlobal", false);
+                physicsData.windGlobal = cJson.value("windGlobal", false);
+                physicsData.gravityGlobal = cJson.value("gravityGlobal", false);
+                physicsData.mixGlobal = cJson.value("mixGlobal", false);
+                skeletonData.physicsConstraints.push_back(physicsData);
+            }
+        }
+    }
+
+    /* IK constraints (Legacy fallback) */
     if (j.contains("ik")) {
         for (const auto& ikJson : j["ik"]) {
             IKConstraintData ikData;
@@ -106,7 +197,7 @@ SkeletonData readJsonData(const Json& j) {
         }
     }
 
-    /* Transform constraints */
+    /* Transform constraints (Legacy fallback) */
     if (j.contains("transform")) {
         for (const auto& transformJson : j["transform"]) {
             TransformConstraintData transformData;
@@ -115,6 +206,7 @@ SkeletonData readJsonData(const Json& j) {
             transformData.skinRequired = transformJson.value("skin", false);
             if (transformJson.contains("bones")) transformData.bones = transformJson["bones"].get<std::vector<std::string>>();
             if (transformJson.contains("target")) transformData.target = transformJson["target"];
+            else if (transformJson.contains("source")) transformData.target = transformJson["source"];
             transformData.mixRotate = transformJson.value("mixRotate", 1.0f);
             transformData.mixX = transformJson.value("mixX", 1.0f);
             transformData.mixY = transformJson.value("mixY", transformData.mixX);
@@ -133,7 +225,7 @@ SkeletonData readJsonData(const Json& j) {
         }
     }
 
-    /* Path constraints */
+    /* Path constraints (Legacy fallback) */
     if (j.contains("path")) {
         for (const auto& pathJson : j["path"]) {
             PathConstraintData pathData;
@@ -155,7 +247,7 @@ SkeletonData readJsonData(const Json& j) {
         }
     }
 
-    /* Physics constraints */
+    /* Physics constraints (Legacy fallback) */
     if (j.contains("physics")) {
         for (const auto& physicsJson : j["physics"]) {
             PhysicsConstraintData physicsData;
@@ -194,6 +286,7 @@ SkeletonData readJsonData(const Json& j) {
             Skin skinData;
             skinData.name = skinJson.value("name", "");
             if (skinJson.contains("bones")) skinData.bones = skinJson["bones"].get<std::vector<std::string>>();
+            if (skinJson.contains("constraints")) skinData.constraints = skinJson["constraints"].get<std::vector<std::string>>();
             if (skinJson.contains("ik")) skinData.ik = skinJson["ik"].get<std::vector<std::string>>();
             if (skinJson.contains("transform")) skinData.transform = skinJson["transform"].get<std::vector<std::string>>();
             if (skinJson.contains("path")) skinData.path = skinJson["path"].get<std::vector<std::string>>();

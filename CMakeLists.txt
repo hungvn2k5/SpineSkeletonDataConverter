@@ -4,6 +4,10 @@ project(SpineSkeletonDataConverter)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+if(MSVC)
+    add_compile_options(/FS)
+endif()
+
 # Add spine-c/spine-cpp for syntax prompting. These won't be linked to the final executable.
 # Comment out if you don't need syntax prompting.
 

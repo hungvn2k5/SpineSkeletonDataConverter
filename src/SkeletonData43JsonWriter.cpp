@@ -61,7 +61,7 @@ Json writeJsonData(const SkeletonData& skeletonData) {
         if (bone.scaleY != 1.0f) boneJson["scaleY"] = bone.scaleY;
         if (bone.shearX != 0.0f) boneJson["shearX"] = bone.shearX;
         if (bone.shearY != 0.0f) boneJson["shearY"] = bone.shearY;
-        if (bone.inherit != Inherit_Normal) boneJson["inherit"] = inheritString.at(bone.inherit);
+        if (bone.inherit != Inherit_Normal) boneJson["transform"] = inheritString.at(bone.inherit);
         if (bone.skinRequired) boneJson["skin"] = bone.skinRequired;
         if (bone.color) boneJson["color"] = colorToString(bone.color.value(), true);
         if (bone.icon && bone.icon != "") boneJson["icon"] = bone.icon;
@@ -82,9 +82,17 @@ Json writeJsonData(const SkeletonData& skeletonData) {
         j["slots"].push_back(slotJson);
     }
 
+    /* Unified Constraints (Spine 4.3 JSON format) */
+    struct ConstraintItem {
+        int order;
+        Json json;
+    };
+    std::vector<ConstraintItem> allConstraints;
+
     /* IK constraints */
     for (const auto& ik : skeletonData.ikConstraints) {
         Json ikJson = Json::object();
+        ikJson["type"] = "ik";
         if (ik.name) ikJson["name"] = ik.name;
         if (ik.order != 0) ikJson["order"] = ik.order;
         if (ik.skinRequired) ikJson["skin"] = ik.skinRequired;
@@ -96,17 +104,18 @@ Json writeJsonData(const SkeletonData& skeletonData) {
         if (ik.compress) ikJson["compress"] = ik.compress;
         if (ik.stretch) ikJson["stretch"] = ik.stretch;
         if (ik.uniform) ikJson["uniform"] = ik.uniform;
-        j["ik"].push_back(ikJson);
+        allConstraints.push_back({static_cast<int>(ik.order), ikJson});
     }
 
     /* Transform constraints */
     for (const auto& transform : skeletonData.transformConstraints) {
         Json transformJson = Json::object();
+        transformJson["type"] = "transform";
         if (transform.name) transformJson["name"] = transform.name;
         if (transform.order != 0) transformJson["order"] = transform.order;
         if (transform.skinRequired) transformJson["skin"] = transform.skinRequired;
         if (!transform.bones.empty()) transformJson["bones"] = transform.bones;
-        if (transform.target) transformJson["target"] = transform.target;
+        if (transform.target) transformJson["source"] = transform.target;
         if (transform.mixRotate != 1.0f) transformJson["mixRotate"] = transform.mixRotate;
         if (transform.mixX != 1.0f) transformJson["mixX"] = transform.mixX;
         if (transform.mixY != transform.mixX) transformJson["mixY"] = transform.mixY;
@@ -121,12 +130,13 @@ Json writeJsonData(const SkeletonData& skeletonData) {
         if (transform.offsetShearY != 0.0f) transformJson["shearY"] = transform.offsetShearY;
         if (transform.relative) transformJson["relative"] = transform.relative;
         if (transform.local) transformJson["local"] = transform.local;
-        j["transform"].push_back(transformJson);
+        allConstraints.push_back({static_cast<int>(transform.order), transformJson});
     }
 
     /* Path constraints */
     for (const auto& path : skeletonData.pathConstraints) {
         Json pathJson = Json::object();
+        pathJson["type"] = "path";
         if (path.name) pathJson["name"] = path.name;
         if (path.order != 0) pathJson["order"] = path.order;
         if (path.skinRequired) pathJson["skin"] = path.skinRequired;
@@ -141,12 +151,13 @@ Json writeJsonData(const SkeletonData& skeletonData) {
         if (path.mixRotate != 1.0f) pathJson["mixRotate"] = path.mixRotate;
         if (path.mixX != 1.0f) pathJson["mixX"] = path.mixX;
         if (path.mixY != path.mixX) pathJson["mixY"] = path.mixY;
-        j["path"].push_back(pathJson);
+        allConstraints.push_back({static_cast<int>(path.order), pathJson});
     }
 
     /* Physics constraints */
     for (const auto& physics : skeletonData.physicsConstraints) {
         Json physicsJson = Json::object();
+        physicsJson["type"] = "physics";
         if (physics.name) physicsJson["name"] = physics.name;
         if (physics.order != 0) physicsJson["order"] = physics.order;
         if (physics.skinRequired) physicsJson["skin"] = physics.skinRequired;
@@ -172,7 +183,16 @@ Json writeJsonData(const SkeletonData& skeletonData) {
         if (physics.windGlobal) physicsJson["windGlobal"] = physics.windGlobal;
         if (physics.gravityGlobal) physicsJson["gravityGlobal"] = physics.gravityGlobal;
         if (physics.mixGlobal) physicsJson["mixGlobal"] = physics.mixGlobal;
-        j["physics"].push_back(physicsJson);
+        allConstraints.push_back({static_cast<int>(physics.order), physicsJson});
+    }
+
+    if (!allConstraints.empty()) {
+        std::sort(allConstraints.begin(), allConstraints.end(), [](const ConstraintItem& a, const ConstraintItem& b) {
+            return a.order < b.order;
+        });
+        for (const auto& item : allConstraints) {
+            j["constraints"].push_back(item.json);
+        }
     }
 
     /* Skins */
@@ -180,10 +200,10 @@ Json writeJsonData(const SkeletonData& skeletonData) {
         Json skinJson = Json::object();
         skinJson["name"] = skin.name; 
         if (!skin.bones.empty()) skinJson["bones"] = skin.bones;
-        if (!skin.ik.empty()) skinJson["ik"] = skin.ik;
-        if (!skin.transform.empty()) skinJson["transform"] = skin.transform;
-        if (!skin.path.empty()) skinJson["path"] = skin.path;
-        if (!skin.physics.empty()) skinJson["physics"] = skin.physics;
+        if (!skin.constraints.empty()) skinJson["constraints"] = skin.constraints;
+        
+        
+        
         if (!skin.attachments.empty()) {
             for (const auto& [slotName, slotMap] : skin.attachments) {
                 for (const auto& [attachmentName, attachmentMap] : slotMap) {
