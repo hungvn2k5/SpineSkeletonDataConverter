@@ -23,14 +23,15 @@ macro(add_spine_cpp version)
     target_include_directories(spine_cpp_${version} PRIVATE "spine/spine-cpp-${version}/include")
 endmacro()
 
-add_spine_c(21)
-add_spine_c(35)
-add_spine_c(36)
-add_spine_cpp(37)
-add_spine_cpp(38)
-add_spine_cpp(40)
-add_spine_cpp(41)
-add_spine_cpp(42)
+# add_spine_c(21)
+# add_spine_c(35)
+# add_spine_c(36)
+# add_spine_cpp(37)
+# add_spine_cpp(38)
+# add_spine_cpp(40)
+# add_spine_cpp(41)
+# add_spine_cpp(42)
+# add_spine_cpp(43)
 
 add_executable(SpineSkeletonDataConverter
     "include/json.hpp"
@@ -68,6 +69,10 @@ add_executable(SpineSkeletonDataConverter
     "src/SkeletonData42BinaryWriter.cpp"
     "src/SkeletonData42JsonReader.cpp"
     "src/SkeletonData42JsonWriter.cpp"
+    "src/SkeletonData43BinaryReader.cpp"
+    "src/SkeletonData43BinaryWriter.cpp"
+    "src/SkeletonData43JsonReader.cpp"
+    "src/SkeletonData43JsonWriter.cpp"
 )
 
 target_include_directories(SpineSkeletonDataConverter PRIVATE "include")

@@ -15,6 +15,7 @@ enum class SpineVersion {
     Version40 = 4,
     Version41 = 5,
     Version42 = 6,
+    Version43 = 7,
     Invalid = -1
 };
 
@@ -76,6 +77,8 @@ SpineVersion detectSpineVersion(const std::string& filePath) {
                 return SpineVersion::Version41;
             } else if (majorMinor == "4.2") {
                 return SpineVersion::Version42;
+            } else if (majorMinor == "4.3") {
+                return SpineVersion::Version43;
             }
         }
     }
@@ -95,6 +98,7 @@ std::string getVersionString(SpineVersion version) {
         case SpineVersion::Version40: return "4.0";
         case SpineVersion::Version41: return "4.1";
         case SpineVersion::Version42: return "4.2";
+        case SpineVersion::Version43: return "4.3";
         default: return "Unknown";
     }
 }
@@ -116,6 +120,7 @@ SpineVersion parseVersionString(const std::string& versionStr) {
         else if (majorMinor == "4.0") return SpineVersion::Version40;
         else if (majorMinor == "4.1") return SpineVersion::Version41;
         else if (majorMinor == "4.2") return SpineVersion::Version42;
+        else if (majorMinor == "4.3") return SpineVersion::Version43;
     }
     
     return SpineVersion::Invalid;
@@ -204,6 +209,16 @@ bool convertFile(const std::string& inputFile, const std::string& outputFile,
                     skelData = spine42::readBinaryData(binaryData);
                 } else {
                     skelData = spine42::readJsonData(jsonData);
+                }
+                break;
+            }
+            case SpineVersion::Version43: {
+                if (inputFormat == FileFormat::Skel) {
+                    try { skelData = spine43::readBinaryData(binaryData); }
+                    catch (const std::exception& e) { throw std::runtime_error("readBinaryData failed: " + std::string(e.what())); }
+                } else {
+                    try { skelData = spine43::readJsonData(jsonData); }
+                    catch (const std::exception& e) { throw std::runtime_error("readJsonData failed: " + std::string(e.what())); }
                 }
                 break;
             }
@@ -392,6 +407,30 @@ bool convertFile(const std::string& inputFile, const std::string& outputFile,
                 }
                 break;
             }
+            case SpineVersion::Version43: {
+                if (outputFormat == FileFormat::Skel) {
+                    std::vector<unsigned char> outputData;
+                    try { outputData = spine43::writeBinaryData(skelData); }
+                    catch (const std::exception& e) { throw std::runtime_error("writeBinaryData failed: " + std::string(e.what())); }
+                    std::ofstream ofs(outputFile, std::ios::binary);
+                    if (!ofs) {
+                        std::cerr << "Error: Cannot create output file: " << outputFile << "\n";
+                        return false;
+                    }
+                    ofs.write(reinterpret_cast<const char*>(outputData.data()), outputData.size());
+                } else {
+                    Json outputJson;
+                    try { outputJson = spine43::writeJsonData(skelData); }
+                    catch (const std::exception& e) { throw std::runtime_error("writeJsonData failed: " + std::string(e.what())); }
+                    std::ofstream ofs(outputFile);
+                    if (!ofs) {
+                        std::cerr << "Error: Cannot create output file: " << outputFile << "\n";
+                        return false;
+                    }
+                    ofs << dumpJson(outputJson);
+                }
+                break;
+            }
             default:
                 std::cerr << "Error: Unsupported output Spine version\n";
                 return false;
@@ -417,9 +456,9 @@ void printUsage(const char* programName) {
     std::cout << "Examples:\n";
     std::cout << "  " << programName << " input.skel output.json\n";
     std::cout << "  " << programName << " input.json output.skel\n";
-    std::cout << "  " << programName << " input37.json output42.skel -v 4.2.11\n\n";
-    std::cout << "Supported Spine versions: 3.5.x, 3.6.x, 3.7.x, 3.8.x, 4.0.x, 4.1.x, 4.2.x\n";
-    std::cout << "Note: Version must be specified in complete x.y.z format (e.g., 4.2.11, not 4.2)\n";
+    std::cout << "  " << programName << " input37.json output43.skel -v 4.3.0\n\n";
+    std::cout << "Supported Spine versions: 3.5.x, 3.6.x, 3.7.x, 3.8.x, 4.0.x, 4.1.x, 4.2.x, 4.3.x\n";
+    std::cout << "Note: Version must be specified in complete x.y.z format (e.g., 4.3.0, not 4.3)\n";
     std::cout << "Input version detection is automatic based on file content.\n";
     std::cout << "Output version defaults to input version unless specified with -v.\n";
 }

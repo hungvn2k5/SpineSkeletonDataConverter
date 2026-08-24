@@ -53,6 +53,12 @@ enum RotateMode {
     RotateMode_ChainScale
 };
 
+enum ScaleYMode {
+    ScaleYMode_None = 0,
+    ScaleYMode_Uniform,
+    ScaleYMode_Volume
+};
+
 enum AttachmentType {
     AttachmentType_Region,
     AttachmentType_Boundingbox,
@@ -421,6 +427,8 @@ struct BoneData {
     bool skinRequired = false; 
     OptColor color = std::nullopt; // Color { 0x9b, 0x9b, 0x9b, 0xff };
     OptStr icon = std::nullopt; 
+    float iconSize = 0.0f;
+    float iconRotation = 0.0f;
     bool visible = true; 
 }; 
 
@@ -446,6 +454,20 @@ struct IKConstraintData {
     bool uniform = false; 
     float mix = 1.0f; 
     float softness = 0.0f; 
+    ScaleYMode scaleYMode = ScaleYMode_None;
+};
+
+struct ToProperty {
+    int type = 0; // 0=rotate, 1=x, 2=y, 3=scaleX, 4=scaleY, 5=shearY
+    float offset = 0;
+    float max = 0;
+    float scale = 1;
+};
+
+struct FromProperty {
+    int type = 0; // 0=rotate, 1=x, 2=y, 3=scaleX, 4=scaleY, 5=shearY
+    float offset = 0;
+    std::vector<ToProperty> to;
 };
 
 struct TransformConstraintData {
@@ -456,7 +478,8 @@ struct TransformConstraintData {
     OptStr target = std::nullopt;
     float mixRotate = 1.0f, mixX = 1.0f, mixY = 1.0f, mixScaleX = 1.0f, mixScaleY = 1.0f, mixShearY = 1.0f; 
     float offsetRotation = 0.0f, offsetX = 0.0f, offsetY = 0.0f, offsetScaleX = 0.0f, offsetScaleY = 0.0f, offsetShearY = 0.0f;
-    bool relative = false, local = false; 
+    bool relative = false, local = false, localSource = false, localTarget = false, additive = false, clamp = false; 
+    std::vector<FromProperty> properties;
 };
 
 struct PathConstraintData {
@@ -479,8 +502,31 @@ struct PhysicsConstraintData {
     bool skinRequired = false;
     OptStr bone = std::nullopt;
     float x = 0.0f, y = 0.0f, rotate = 0.0f, scaleX = 0.0f, shearX = 0.0f, limit = 5000.0f;
-    float fps = 60.0f, inertia = 1.0f, strength = 100.0f, damping = 1.0f, mass = 1.0f, wind = 0.0f, gravity = 0.0f, mix = 1.0f;
+    float fps = 60.0f, inertia = 1.0f, strength = 100.0f, damping = 1.0f, mass = 1.0f, massInverse = 1.0f, wind = 0.0f, gravity = 0.0f, mix = 1.0f;
     bool inertiaGlobal = false, strengthGlobal = false, dampingGlobal = false, massGlobal = false, windGlobal = false, gravityGlobal = false, mixGlobal = false;
+    ScaleYMode scaleYMode = ScaleYMode_None;
+    float step = 0.0f;
+};
+
+struct SliderConstraintData {
+    OptStr name = std::nullopt;
+    size_t order = 0;
+    bool skinRequired = false;
+    std::string animation = "";
+    bool additive = false;
+    bool loop = false;
+    OptStr bone = std::nullopt;
+    
+    int propertyType = 0;
+    bool hasProperty = false;
+    float propertyOffset = 0.0f;
+    float offset = 0.0f;
+    float scale = 1.0f;
+    float max = 0.0f;
+    bool local = false;
+    
+    float time = 0.0f;
+    float mix = 1.0f;
 };
 
 struct Skin {
@@ -512,6 +558,7 @@ struct Animation {
     std::map<std::string, Timeline> transform;
     std::map<std::string, MultiTimeline> path;
     std::map<std::string, MultiTimeline> physics;
+    std::map<std::string, MultiTimeline> sliders;
     std::map<std::string, std::map<std::string, std::map<std::string, MultiTimeline>>> attachments;
     Timeline drawOrder;
     Timeline events;
@@ -534,6 +581,7 @@ struct SkeletonData {
     std::vector<TransformConstraintData> transformConstraints; 
     std::vector<PathConstraintData> pathConstraints; 
     std::vector<PhysicsConstraintData> physicsConstraints; 
+    std::vector<SliderConstraintData> sliderConstraints; 
     std::vector<Skin> skins; 
     std::vector<EventData> events; 
     std::vector<Animation> animations; 
@@ -607,6 +655,12 @@ namespace spine41 {
     Json writeJsonData(const SkeletonData&);
 }
 namespace spine42 {
+    SkeletonData readBinaryData(const Binary&);
+    Binary writeBinaryData(SkeletonData&);
+    SkeletonData readJsonData(const Json&);
+    Json writeJsonData(const SkeletonData&);
+}
+namespace spine43 {
     SkeletonData readBinaryData(const Binary&);
     Binary writeBinaryData(SkeletonData&);
     SkeletonData readJsonData(const Json&);
