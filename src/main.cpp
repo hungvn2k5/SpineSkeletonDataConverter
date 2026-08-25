@@ -494,22 +494,22 @@ ConversionOptions parseArguments(int argc, char* argv[]) {
     
     if (inputExt == ".json") {
         options.inputFormat = FileFormat::Json;
-    } else if (inputExt == ".skel") {
+    } else if (inputExt == ".skel" || inputExt == ".bytes") {
         options.inputFormat = FileFormat::Skel;
     } else {
         std::cerr << "Error: Unsupported input file extension: " << inputExt << "\n";
-        std::cerr << "Supported extensions: .json, .skel\n";
+        std::cerr << "Supported extensions: .json, .skel, .bytes\n";
         options.help = true;
         return options;
     }
     
     if (outputExt == ".json") {
         options.outputFormat = FileFormat::Json;
-    } else if (outputExt == ".skel") {
+    } else if (outputExt == ".skel" || outputExt == ".bytes") {
         options.outputFormat = FileFormat::Skel;
     } else {
         std::cerr << "Error: Unsupported output file extension: " << outputExt << "\n";
-        std::cerr << "Supported extensions: .json, .skel\n";
+        std::cerr << "Supported extensions: .json, .skel, .bytes\n";
         options.help = true;
         return options;
     }

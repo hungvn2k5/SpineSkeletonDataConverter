@@ -26,6 +26,8 @@ void writeFloatArray(Binary& binary, const std::vector<float>& array) {
     }
 }
 
+// NOTE: Unity's ReadShortArray(input, n) takes n from context (not from binary stream).
+// So we must NOT write the size prefix — only write the elements.
 void writeShortArray(Binary& binary, const std::vector<unsigned short>& array) {
     for (unsigned short value : array) {
         writeVarint(binary, value, true);
@@ -39,19 +41,26 @@ void writeVertices(Binary& binary, const std::vector<float>& vertices, bool weig
         writeVarint(binary, vertexCount, true);
         writeFloatArray(binary, vertices);
     } else {
-        int vertexCount = 0; 
-        int verticesIdx = 0; 
+        // First pass: count vertexCount and compute n (total bones array size)
+        int vertexCount = 0;
+        int n = 0; // n = vertexCount + sum(boneCount_i) for all i
+        size_t verticesIdx = 0;
         while (verticesIdx < vertices.size()) {
             int boneCount = (int)vertices[verticesIdx++];
-            vertexCount++; 
+            if (boneCount <= 0 || verticesIdx + boneCount * 4 > vertices.size()) break;
+            vertexCount++;
+            n += 1 + boneCount; // 1 for the boneCount entry itself, boneCount for bone indices
             verticesIdx += boneCount * 4;
         }
+        // Write vertexCount then n (required by Unity ReadVertices)
         writeVarint(binary, vertexCount, true);
-        verticesIdx = 0; 
-        for (int i = 0; i < vertexCount; i++) {
-            int boneCount = (int)vertices[verticesIdx++]; 
+        writeVarint(binary, n, true);
+        // Second pass: write bone data
+        verticesIdx = 0;
+        for (int i = 0; i < vertexCount && verticesIdx < vertices.size(); i++) {
+            int boneCount = (int)vertices[verticesIdx++];
             writeVarint(binary, boneCount, true);
-            for (int ii = 0; ii < boneCount; ii++) {
+            for (int ii = 0; ii < boneCount && verticesIdx + 3 < vertices.size(); ii++) {
                 writeVarint(binary, (int)vertices[verticesIdx++], true);
                 writeFloat(binary, vertices[verticesIdx++]);
                 writeFloat(binary, vertices[verticesIdx++]);
@@ -71,26 +80,76 @@ int getBezierCount(const Timeline& timeline, int valueNum) {
     int count = 0;
     for (size_t i = 0; i < timeline.size() - 1; i++) {
         if (timeline[i].curveType == CurveType::CURVE_BEZIER) {
-            count += timeline[i].curve.size() > 0 ? timeline[i].curve.size() : (valueNum * 4);
+            count += valueNum;
         }
     }
     return count;
 }
 
+void writeCurve(Binary& binary, const TimelineFrame& frame, int valueNum) {
+    if (frame.curve.size() == 4 && valueNum > 1) {
+        for (int i = 0; i < valueNum; i++) {
+            for (float v : frame.curve) {
+                writeFloat(binary, v);
+            }
+        }
+    } else {
+        for (float v : frame.curve) {
+            writeFloat(binary, v);
+        }
+    }
+}
+
 void writeTimeline(Binary& binary, const Timeline& timeline, int valueNum) {
+    auto writeValues = [&](const TimelineFrame& frame) {
+        writeFloat(binary, frame.value1);
+        if (valueNum > 1) writeFloat(binary, frame.value2);
+        if (valueNum > 2) writeFloat(binary, frame.value3);
+        if (valueNum > 3) writeFloat(binary, frame.value4);
+        if (valueNum > 4) writeFloat(binary, frame.value5);
+        if (valueNum > 5) writeFloat(binary, frame.value6);
+    };
+
     writeFloat(binary, timeline[0].time); 
-    writeFloat(binary, timeline[0].value1);
-    if (valueNum > 1) writeFloat(binary, timeline[0].value2);
-    if (valueNum > 2) writeFloat(binary, timeline[0].value3);
+    writeValues(timeline[0]);
     for (size_t frameIndex = 1; frameIndex < timeline.size(); frameIndex++) {
         writeFloat(binary, timeline[frameIndex].time); 
-        writeFloat(binary, timeline[frameIndex].value1);
-        if (valueNum > 1) writeFloat(binary, timeline[frameIndex].value2);
-        if (valueNum > 2) writeFloat(binary, timeline[frameIndex].value3);
+        writeValues(timeline[frameIndex]);
         CurveType curveType = timeline[frameIndex - 1].curveType;
         writeSByte(binary, (signed char)curveType);
         if (curveType == CurveType::CURVE_BEZIER) {
-            writeCurve(binary, timeline[frameIndex - 1]);
+            writeCurve(binary, timeline[frameIndex - 1], valueNum);
+        }
+    }
+}
+
+void writeColorTimeline(Binary& binary, const Timeline& timeline, SlotTimelineType type, int valueNum) {
+    auto writeValues = [&](const TimelineFrame& frame) {
+        Color color1 = frame.color1.value_or(Color{255, 255, 255, 255});
+        Color color2 = frame.color2.value_or(Color{0, 0, 0, 0});
+        if (type == SlotTimelineType::SLOT_RGBA) {
+            writeByte(binary, color1.r); writeByte(binary, color1.g); writeByte(binary, color1.b); writeByte(binary, color1.a);
+        } else if (type == SlotTimelineType::SLOT_RGB) {
+            writeByte(binary, color1.r); writeByte(binary, color1.g); writeByte(binary, color1.b);
+        } else if (type == SlotTimelineType::SLOT_RGBA2) {
+            writeByte(binary, color1.r); writeByte(binary, color1.g); writeByte(binary, color1.b); writeByte(binary, color1.a);
+            writeByte(binary, color2.r); writeByte(binary, color2.g); writeByte(binary, color2.b);
+        } else if (type == SlotTimelineType::SLOT_RGB2) {
+            writeByte(binary, color1.r); writeByte(binary, color1.g); writeByte(binary, color1.b);
+            writeByte(binary, color2.r); writeByte(binary, color2.g); writeByte(binary, color2.b);
+        } else if (type == SlotTimelineType::SLOT_ALPHA) {
+            writeByte(binary, color1.a);
+        }
+    };
+    writeFloat(binary, timeline[0].time); 
+    writeValues(timeline[0]);
+    for (size_t frameIndex = 1; frameIndex < timeline.size(); frameIndex++) {
+        writeFloat(binary, timeline[frameIndex].time); 
+        writeValues(timeline[frameIndex]);
+        CurveType curveType = timeline[frameIndex - 1].curveType;
+        writeSByte(binary, (signed char)curveType);
+        if (curveType == CurveType::CURVE_BEZIER) {
+            writeCurve(binary, timeline[frameIndex - 1], valueNum);
         }
     }
 }
@@ -153,7 +212,7 @@ void writeSkin(Binary& binary, const Skin& skin, SkeletonData& skeletonData, boo
                 case AttachmentType_Mesh: {
                     const MeshAttachment& mesh = std::get<MeshAttachment>(attachment.data);
                     int verticesLength = mesh.vertices.size();
-                    int vertexCount = mesh.hullLength > 0 ? mesh.hullLength / 2 : (verticesLength >> 1);
+                    int vertexCount = mesh.uvs.size() > 0 ? (mesh.uvs.size() / 2) : (mesh.hullLength > 0 ? mesh.hullLength / 2 : (verticesLength >> 1));
                     if (attachment.path != attachment.name) flags |= 16;
                     if (mesh.color.has_value()) flags |= 32;
                     if (mesh.sequence.has_value()) flags |= 64;
@@ -219,7 +278,7 @@ void writeSkin(Binary& binary, const Skin& skin, SkeletonData& skeletonData, boo
                     if ((flags & 16) != 0) writeStringRef(binary, attachment.path, skeletonData);
                     if (mesh.color.has_value()) writeColor(binary, mesh.color.value());
                     if (mesh.sequence.has_value()) writeSequence(binary, mesh.sequence.value());
-                    writeVarint(binary, mesh.hullLength / 2, true);
+                    writeVarint(binary, mesh.hullLength, true);
                     writeVertices(binary, mesh.vertices, weighted);
                     writeFloatArray(binary, mesh.uvs);
                     writeShortArray(binary, mesh.triangles);
@@ -324,15 +383,37 @@ Binary writeBinaryData(SkeletonData& skeletonData) {
 
     if (skeletonData.strings.empty()) {
         std::set<std::string> stringSet;
+        for (const auto& slot : skeletonData.slots) {
+            if (slot.attachmentName.has_value() && !slot.attachmentName->empty()) {
+                stringSet.insert(slot.attachmentName.value());
+            }
+        }
         for (const auto& skin : skeletonData.skins) {
             for (const auto& [slotName, slotMap] : skin.attachments) {
                 for (const auto& [attachmentName, attachment] : slotMap) {
+                    stringSet.insert(attachmentName);
                     stringSet.insert(attachment.name);
                     if (attachment.path != attachment.name) stringSet.insert(attachment.path);
+                    if (attachment.type == AttachmentType_Linkedmesh) {
+                        const auto& linkedMesh = std::get<LinkedmeshAttachment>(attachment.data);
+                        if (!linkedMesh.parentMesh.empty()) {
+                            stringSet.insert(linkedMesh.parentMesh);
+                        }
+                    }
                 }
             }
         }
         for (const auto& animation : skeletonData.animations) {
+            for (const auto& [slotName, slotTimelines] : animation.slots) {
+                auto it = slotTimelines.find("attachment");
+                if (it != slotTimelines.end()) {
+                    for (const auto& frame : it->second) {
+                        if (frame.str1.has_value() && !frame.str1->empty()) {
+                            stringSet.insert(frame.str1.value());
+                        }
+                    }
+                }
+            }
             for (const auto& [skinName, skinMap] : animation.attachments) {
                 for (const auto& [slotName, slotMap] : skinMap) {
                     for (const auto& [attachmentName, multiTimeline] : slotMap) {
@@ -345,6 +426,14 @@ Binary writeBinaryData(SkeletonData& skeletonData) {
         for (const std::string& str : stringSet) {
             skeletonData.strings.push_back(str);
         }
+    }
+
+    if (skeletonData.constraintNames.empty()) {
+        for (const auto& c : skeletonData.ikConstraints) if (c.name) skeletonData.constraintNames.push_back(c.name.value());
+        for (const auto& c : skeletonData.transformConstraints) if (c.name) skeletonData.constraintNames.push_back(c.name.value());
+        for (const auto& c : skeletonData.pathConstraints) if (c.name) skeletonData.constraintNames.push_back(c.name.value());
+        for (const auto& c : skeletonData.physicsConstraints) if (c.name) skeletonData.constraintNames.push_back(c.name.value());
+        for (const auto& c : skeletonData.sliderConstraints) if (c.name) skeletonData.constraintNames.push_back(c.name.value());
     }
 
     writeVarint(binary, skeletonData.strings.size(), true);
@@ -406,7 +495,7 @@ Binary writeBinaryData(SkeletonData& skeletonData) {
         if (skeletonData.nonessential) writeBoolean(binary, slot.visible);
     }
 
-    /* Constraints (Unified 4.3) */
+    /* Constraints (Unified 4.3 - matching official Spine 4.3 C# SkeletonBinary.cs) */
     size_t totalConstraints = skeletonData.ikConstraints.size() + skeletonData.transformConstraints.size() +
                               skeletonData.pathConstraints.size() + skeletonData.physicsConstraints.size() +
                               skeletonData.sliderConstraints.size();
@@ -444,10 +533,10 @@ Binary writeBinaryData(SkeletonData& skeletonData) {
         if (data.softness != 0.0f) writeFloat(binary, data.softness);
     }
 
-    // Write Transform Constraints (type 1)
+    // Write Transform Constraints (type 2, per Unity CONSTRAINT_TRANSFORM=2)
     for (const auto& data : skeletonData.transformConstraints) {
         writeString(binary, data.name);
-        writeByte(binary, 1); // Transform
+        writeByte(binary, 2); // Transform
         writeVarint(binary, data.bones.size(), true);
         for (const auto& boneName : data.bones) {
             int boneIndex = 0;
@@ -514,10 +603,10 @@ Binary writeBinaryData(SkeletonData& skeletonData) {
         if (data.mixShearY != 1.0f) writeFloat(binary, data.mixShearY);
     }
 
-    // Write Path Constraints (type 2)
+    // Write Path Constraints (type 1, per Unity CONSTRAINT_PATH=1)
     for (const auto& data : skeletonData.pathConstraints) {
         writeString(binary, data.name);
-        writeByte(binary, 2); // Path
+        writeByte(binary, 1); // Path
         writeVarint(binary, data.bones.size(), true);
         for (const auto& boneName : data.bones) {
             int boneIndex = 0;
@@ -532,7 +621,7 @@ Binary writeBinaryData(SkeletonData& skeletonData) {
         }
         writeVarint(binary, targetIndex, true);
         
-        unsigned char flags = (int)data.positionMode | ((int)data.spacingMode << 1) | ((int)data.rotateMode << 3);
+        unsigned char flags = (((int)data.positionMode & 1) << 1) | (((int)data.spacingMode & 3) << 2) | (((int)data.rotateMode & 3) << 4);
         if (data.skinRequired) flags |= 1;
         if (data.offsetRotation != 0.0f) flags |= 128;
         writeByte(binary, flags);
@@ -674,9 +763,23 @@ Binary writeBinaryData(SkeletonData& skeletonData) {
         int drawOrderTimelinesCount = animation.drawOrder.size() > 0 ? 1 : 0;
         int eventTimelinesCount = animation.events.size() > 0 ? 1 : 0;
         
-        int totalTimelines = slotTimelinesCount + boneTimelinesCount + ikTimelinesCount + transformTimelinesCount +
-                            pathTimelinesCount + physicsTimelinesCount + sliderTimelinesCount + attachmentTimelinesCount +
-                            drawOrderTimelinesCount + eventTimelinesCount;
+        // Calculate total timelines
+        int totalTimelines = 0;
+        for (const auto& pair : animation.slots) totalTimelines += pair.second.size();
+        for (const auto& pair : animation.bones) totalTimelines += pair.second.size();
+        totalTimelines += animation.ik.size();
+        totalTimelines += animation.transform.size();
+        for (const auto& pair : animation.path) totalTimelines += pair.second.size();
+        for (const auto& pair : animation.physics) totalTimelines += pair.second.size();
+        for (const auto& pair : animation.sliders) totalTimelines += pair.second.size();
+        for (const auto& skinPair : animation.attachments) {
+            for (const auto& slotPair : skinPair.second) {
+                totalTimelines += slotPair.second.size();
+            }
+        }
+        if (animation.drawOrder.size() > 0) totalTimelines++;
+        if (animation.events.size() > 0) totalTimelines++;
+        
         writeVarint(binary, totalTimelines, true);
 
         // Slot timelines
@@ -701,23 +804,23 @@ Binary writeBinaryData(SkeletonData& skeletonData) {
                 } else if (type == SlotTimelineType::SLOT_RGBA) {
                     int bezierCount = getBezierCount(timeline, 4);
                     writeVarint(binary, bezierCount, true);
-                    writeTimeline(binary, timeline, 4);
+                    writeColorTimeline(binary, timeline, type, 4);
                 } else if (type == SlotTimelineType::SLOT_RGB) {
                     int bezierCount = getBezierCount(timeline, 3);
                     writeVarint(binary, bezierCount, true);
-                    writeTimeline(binary, timeline, 3);
+                    writeColorTimeline(binary, timeline, type, 3);
                 } else if (type == SlotTimelineType::SLOT_RGBA2) {
                     int bezierCount = getBezierCount(timeline, 7);
                     writeVarint(binary, bezierCount, true);
-                    writeTimeline(binary, timeline, 7);
+                    writeColorTimeline(binary, timeline, type, 7);
                 } else if (type == SlotTimelineType::SLOT_RGB2) {
                     int bezierCount = getBezierCount(timeline, 6);
                     writeVarint(binary, bezierCount, true);
-                    writeTimeline(binary, timeline, 6);
+                    writeColorTimeline(binary, timeline, type, 6);
                 } else if (type == SlotTimelineType::SLOT_ALPHA) {
                     int bezierCount = getBezierCount(timeline, 1);
                     writeVarint(binary, bezierCount, true);
-                    writeTimeline(binary, timeline, 1);
+                    writeColorTimeline(binary, timeline, type, 1);
                 }
             }
         }
@@ -949,6 +1052,11 @@ Binary writeBinaryData(SkeletonData& skeletonData) {
                 writeFloat(binary, frame.value3);
             }
         }
+
+        // Spine 4.3 stores a nonessential RGBA color after every animation.
+        // The runtime currently discards it, but the four bytes are still required
+        // to keep the next animation aligned in the binary stream.
+        if (skeletonData.nonessential) writeInt(binary, 0);
     }
 
     // Write slider constraint animation indices

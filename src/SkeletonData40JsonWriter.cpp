@@ -51,7 +51,7 @@ Json writeJsonData(const SkeletonData& skeletonData) {
         if (bone.scaleY != 1.0f) boneJson["scaleY"] = bone.scaleY;
         if (bone.shearX != 0.0f) boneJson["shearX"] = bone.shearX;
         if (bone.shearY != 0.0f) boneJson["shearY"] = bone.shearY;
-        if (bone.inherit != Inherit_Normal) boneJson["transform"] = inheritString.at(bone.inherit);
+        if (bone.inherit != Inherit_Normal) boneJson["inherit"] = inheritString.at(bone.inherit);
         if (bone.skinRequired) boneJson["skin"] = bone.skinRequired;
     if (bone.color) boneJson["color"] = ::colorToString(bone.color.value(), true);
         j["bones"].push_back(boneJson);

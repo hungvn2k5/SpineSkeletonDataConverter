@@ -176,7 +176,8 @@ Skin readSkin(DataInput* input, bool defaultSkin, SkeletonData* skeletonData) {
                     int vertexCount = readVertices(input, mesh.vertices, (flags & 128) != 0);
                     int verticesLength = vertexCount * 2;
                     readFloatArray(input, verticesLength, mesh.uvs);
-                    readShortArray(input, (verticesLength - mesh.hullLength - 2) * 3, mesh.triangles);
+                    int trianglesCount = readVarint(input, true);
+                    readShortArray(input, trianglesCount, mesh.triangles);
                     int timelineSlotsCount = readVarint(input, true);
                     for (int t = 0; t < timelineSlotsCount; t++) {
                         mesh.timelineSlots.push_back(readVarint(input, true));
@@ -266,7 +267,6 @@ Skin readSkin(DataInput* input, bool defaultSkin, SkeletonData* skeletonData) {
 Animation readAnimation(DataInput* input, SkeletonData* skeletonData) {
     Animation animation; 
     animation.name = readString(input).value_or("");
-    int numTimelines = readVarint(input, true);
     
     // Slot timelines
     for (int i = 0, n = readVarint(input, true); i < n; i++) {
@@ -957,7 +957,7 @@ SkeletonData readBinaryData(const Binary& binary) {
                 skeletonData.ikConstraints.push_back(data);
                 break;
             }
-            case 1: { // TRANSFORM (type 1 in 4.3 runtime)
+            case 2: { // TRANSFORM (CONSTRAINT_TRANSFORM=2 per Unity SkeletonBinary.cs)
                 TransformConstraintData data;
                 data.name = name;
                 data.order = i;
@@ -1004,7 +1004,7 @@ SkeletonData readBinaryData(const Binary& binary) {
                 skeletonData.transformConstraints.push_back(data);
                 break;
             }
-            case 2: { // PATH (type 2 in 4.3 runtime)
+            case 1: { // PATH (CONSTRAINT_PATH=1 per Unity SkeletonBinary.cs)
                 PathConstraintData data;
                 data.name = name;
                 data.order = i;
